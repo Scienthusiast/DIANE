@@ -69,6 +69,18 @@
 
 	if(isset($_POST['download_step_diagnostic'])){
 		$_SESSION['download_step_diagnostic'] = $_POST['download_step_diagnostic'];
+
+		// DEBUT AJOUT DEGUEUX 4 SEPTEMBRE
+		$req = $bdd->prepare('SELECT * FROM diagnostic_in_progress WHERE idSerie=? AND idCreator=?'); 
+		$diag_in_progress = $req->execute(array($_SESSION['download_step_diagnostic'], $_SESSION['id']));
+		$_SESSION['download_step_diagnostic_idAns'] = array();
+		$_SESSION['download_step_diagnostic_idTra'] = array();
+		while($d = $req->fetch()){
+			$_SESSION['download_step_diagnostic_idAns'][] = $d['idSelectedAnswer'];
+			$_SESSION['download_step_diagnostic_idTra'][] = $d['idTrace'];
+		}
+		// FIN AJOUT DEGUEUX 4 SEPTEMBRE
+
 		$reload = true;
 	}
 
@@ -78,7 +90,7 @@
 				"idAns" => explode(',', $_POST['save_diag_idAns']), 
 				"idTra" => explode(',', $_POST['save_diag_idTra']),
 				"idSerie" => $_POST['save_diag_idSerie']
-				);
+			);
 			$reload = true;
 		}
 	}
@@ -168,6 +180,7 @@
 		//echo $_SESSION['IDserieToDiagnose'];
 		unset($_SESSION['save_diag_in_progress']);
 	}
+	
 
 	if(isset($_SESSION['download_zip'])){
 		$download_zip = $_SESSION['download_zip'];
@@ -225,6 +238,7 @@
 		$req = $bdd->query($sql);
 
 		$existing_traces = array();
+		$linesInAnswersPbm = array();
 
 		$t_AnswersPbm = "";
 		$t_AnswersSession = "";
@@ -382,30 +396,42 @@
 						$log.= "Il y a 0 ou plus qu'une question dans ce template -> cela n'est pas géré pour le moment...<br>";
 					}
 					
-					
 
 					// Récupération des données pour l'export pour STAR
 					$idPbm = $t['pbm'];
 					$idSession = $t['eleve']; // Pour l'instant on différencie pas d'idSubject
 					$subject = $t['eleve'];
 
-					$t_AnswersPbm .= (string)$idAnswer.";".(string)$idPbm."\n"; //$idAnswers avec un "s" dans le fichier...
-					$t_AnswersSession .= (string)$idSession.";".(string)$idPbm.";".(string)$idAnswer."\n";
+					$idAnswer_for_STAR = (string)$interpretation['id'];
+					if($idAnswer_for_STAR == "-1"){
+						$idAnswer_for_STAR = (string)$idPbm."_"."1";
+					}
+					if($idAnswer_for_STAR == "-2"){
+						$idAnswer_for_STAR = (string)$idPbm."_"."2";
+					}
+
+					$toWriteInAnswersPbm = (string)$idAnswer_for_STAR.";".(string)$idPbm."\n";
+					if(!(in_array($toWriteInAnswersPbm, $linesInAnswersPbm))) {
+						$linesInAnswersPbm[] = $toWriteInAnswersPbm;
+						$t_AnswersPbm .= $toWriteInAnswersPbm;
+					}
+
+					$t_AnswersSession .= (string)$idSession.";".(string)$idPbm.";".(string)$idAnswer_for_STAR."\n";
 
 					// Properties Answer
 					if(!$interpretable_answer){
-						$t_PropertiesAnswers .= "ininterprétable;".(string)$idAnswer."\n";			
+						$t_PropertiesAnswers .= "ininterprétable;".(string)$idAnswer_for_STAR."\n";			
 					}
 					foreach($propertiesAnswer as $propertyAnswer){
-						$t_PropertiesAnswers .= (string)$propertyAnswer.";".(string)$idAnswer."\n";	
+						$t_PropertiesAnswers .= (string)$propertyAnswer.";".(string)$idAnswer_for_STAR."\n";	
 					}
 					if(isset($goodAnswer)){
 						if($goodAnswer){
-							$t_PropertiesAnswers .= "bonne_réponse;".(string)$idAnswer."\n";
+							$t_PropertiesAnswers .= "bonne_réponse;".(string)$idAnswer_for_STAR."\n";
 						}
 					}
 					if($answer->noFormula()){
-						$t_PropertiesAnswers .= "pas_de_réponse;".(string)$idAnswer."\n";			
+						$t_PropertiesAnswers .= "pas_de_réponse;".(string)$idAnswer_for_STAR."\n";			
 					}
 
 					if(!(in_array($idPbm, $pbm_included))){
@@ -471,7 +497,7 @@
 					else{
 						$idAnswer = $answer->export($bdd);
 						$answer->exportFormulas($bdd, $idAnswer);
-					}
+					}				
 
 					$interpretable_answer = get_value_BDD('interpretable', 'answer', 'id=?', array($idAnswer), $bdd);
 
@@ -605,20 +631,26 @@
 	if(isset($_SESSION['ending_diag'])){ // On a fini le diagnostic
 		unset($_SESSION['ending_diag']);
 		if($download_zip){
+
 			$t_AnswersPbm = "";
 			$t_AnswersSession = "";
 			$t_PropertiesAnswers = "";
 			$t_PropertiesProblem = "";
 			$t_Sessions = "";
 
-
+			$linesInAnswersPbm = array();
 			$pbm_included = array();
 
+		// Equivalents :
+			// $_SESSION['save_diag_in_progress']['idTra']; => $_SESSION['download_step_diagnostic_idAns']
+			// $_SESSION['save_diag_in_progress']['idAns']; => $_SESSION['download_step_diagnostic_idTra']
 
-			for($i = 0; $i < count($_SESSION['finished_diag']['idTra']); $i++){
-
+			//for($i = 0; $i < count($_SESSION['finished_diag']['idTra']); $i++){
+			for($i = 0; $i < count($_SESSION['download_step_diagnostic_idTra']); $i++){ // CHANGEMENT DEGUEUX 4 SEPTEMBRE
+				
 				$trace_req = $bdd->prepare('SELECT * FROM trace WHERE id=?');
-				$trace_req->execute(array($_SESSION['finished_diag']['idTra'][$i]));
+				//$trace_req->execute(array($_SESSION['finished_diag']['idTra'][$i]));
+				$trace_req->execute(array($_SESSION['download_step_diagnostic_idTra'][$i])); // CHANGEMENT DEGUEUX 4 SEPTEMBRE
 				$fetch_trace = $trace_req->fetch();
 				$trace_req->closeCursor();
 
@@ -647,21 +679,35 @@
 
 				// On prend l'id dans la table diagnostic_in_progress
 			
-				$idAnswer = get_value_BDD('id', 'diagnostic_in_progress', 'idTrace=? AND idCreator=?', array($_SESSION['finished_diag']['idTra'][$i], $_SESSION['id']), $bdd);
+				//$idAnswer = get_value_BDD('id', 'diagnostic_in_progress', 'idTrace=? AND idCreator=?', array($_SESSION['finished_diag']['idTra'][$i], $_SESSION['id']), $bdd);
+				$idAnswer = get_value_BDD('id', 'diagnostic_in_progress', 'idTrace=? AND idCreator=?', array($_SESSION['download_step_diagnostic_idTra'][$i], $_SESSION['id']), $bdd);  // CHANGEMENT DEGUEUX 4 SEPTEMBRE
+				$idAnswer_for_STAR = (string)get_value_BDD('idSelectedAnswer', 'diagnostic_in_progress', 'id=?', array($idAnswer), $bdd);
+				if($idAnswer_for_STAR == "-1"){
+					$idAnswer_for_STAR = (string)$idPbm."_"."1";
+				}
+				if($idAnswer_for_STAR == "-2"){
+					$idAnswer_for_STAR = (string)$idPbm."_"."2";
+				}
 
+				//$t_AnswersPbm .= (string)$idAnswer_for_STAR.";".(string)$idPbm."\n"; 
+				$toWriteInAnswersPbm = (string)$idAnswer_for_STAR.";".(string)$idPbm."\n";
+				if(!(in_array($toWriteInAnswersPbm, $linesInAnswersPbm))) {
+					$linesInAnswersPbm[] = $toWriteInAnswersPbm;
+					$t_AnswersPbm .= $toWriteInAnswersPbm;
+				}
 
-				$t_AnswersPbm .= (string)$idAnswer.";".(string)$idPbm."\n"; //$idAnswers avec un "s" dans le fichier...
-				$t_AnswersSession .= (string)$idSession.";".(string)$idPbm.";".(string)$idAnswer."\n";
+				$t_AnswersSession .= (string)$idSession.";".(string)$idPbm.";".(string)$idAnswer_for_STAR."\n";
 				$t_Sessions .= (string)$idSession.";".(string)$subject."\n";
 
-				if($_SESSION['finished_diag']['idAns'][$i] == -1){ // NoFormula
-					$t_PropertiesAnswers .= "pas_de_réponse;".(string)$idAnswer."\n";
+				if($_SESSION['download_step_diagnostic_idAns'][$i] == -1){ // NoFormula 
+					$t_PropertiesAnswers .= "pas_de_réponse;".(string)$idAnswer_for_STAR."\n";
 				}
-				elseif($_SESSION['finished_diag']['idAns'][$i] == -2){ // Ininterpretable
-					$t_PropertiesAnswers .= "ininterprétable;".(string)$idAnswer."\n";		
+
+				if($_SESSION['download_step_diagnostic_idAns'][$i] == -2){ // NoFormula 
+					$t_PropertiesAnswers .= "ininterprétable;".(string)$idAnswer_for_STAR."\n";		
 				}
 				else{
-					$idExpectedAnswer = $_SESSION['finished_diag']['idAns'][$i];
+					$idExpectedAnswer = $_SESSION['download_step_diagnostic_idAns'][$i]; 
 
 					$ans_req = $bdd->prepare('SELECT * FROM pbm_expectedanswers WHERE id=?');
 					$ans_req->execute(array($idExpectedAnswer));
@@ -670,12 +716,12 @@
 
 					$propertiesAnswers = explode("|||", $fetch_ans["properties"]);
 					foreach($propertiesAnswers as $propertyAnswer){
-						$t_PropertiesAnswers .= (string)$propertyAnswer.";".(string)$idAnswer."\n";	
+						$t_PropertiesAnswers .= (string)$propertyAnswer.";".(string)$idAnswer_for_STAR."\n";	
 					}
 
 					$goodAnswer = $fetch_ans["goodAnswer"];
 					if($goodAnswer){
-						$t_PropertiesAnswers .= "bonne_réponse;".(string)$idAnswer."\n";
+						$t_PropertiesAnswers .= "bonne_réponse;".(string)$idAnswer_for_STAR."\n";
 					}
 				}
 
@@ -947,6 +993,8 @@
 
 				<form id="form_download_step_diagnostic" method="post" action="diagnostic.php">
 					<input type="hidden" value="" name="download_step_diagnostic" id="download_step_diagnostic">
+					<input type="hidden" value="" name="download_step_diagnostic_idAns" id="download_step_diagnostic_idAns">
+					<input type="hidden" value="" name="download_step_diagnostic_idTra" id="download_step_diagnostic_idTra">
 				</form>
 
 			</div>
@@ -1099,7 +1147,6 @@
 				document.forms["form_download_step_diagnostic"].submit();
 			}
 		}
-
 
 		function confirmRemove(idToSuppr){
 			if(confirm("Êtes vous sûr de vouloir supprimer ce diagnostic en cours ?")){
