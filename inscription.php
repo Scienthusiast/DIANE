@@ -65,7 +65,7 @@
 			ou copier/coller dans votre navigateur internet.
 
 			 
-			http://www.diane.cestpascon.fr/inscription.php?email='.urlencode($email).'&cle='.urlencode($key).'
+			http://www.cestpascon.fr/diane-eiah/inscription.php?email='.urlencode($email).'&cle='.urlencode($key).'
 			 
 			 
 			---------------
